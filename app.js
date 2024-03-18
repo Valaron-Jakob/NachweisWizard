@@ -35,16 +35,31 @@ app.get("/status", (request, response) => {
  */
 app.get("/ausbilder", async (request, response) => {
     let conn;
+    let query;
+
     try {
         conn = await pool.getConnection();
-        const rows = await conn.query(`
-            SELECT us.email, au.ausbilder_id
-            FROM an_user us
-            JOIN ausbilder au
-                ON us.user_id = au.user_id
-        `);
 
-        response.send(rows);
+        if (request.query.id) {
+            query = `
+                SELECT us.user_id, us.vorname, us.nachname, us.email, us.abteilung
+                FROM an_user us
+                JOIN ausbilder au
+                    ON us.user_id = au.user_id
+                WHERE au.ausbilder_id = ${request.query.id}
+            `;
+        } else {
+            query = `
+                SELECT us.email, au.ausbilder_id
+                FROM an_user us
+                JOIN ausbilder au
+                    ON us.user_id = au.user_id
+            `;
+        }
+
+        const results = await conn.query(query);
+
+        response.send(results);
 
     } catch (error) {
         console.error("Query failed", error);
@@ -52,4 +67,4 @@ app.get("/ausbilder", async (request, response) => {
     } finally {
         if (conn) conn.end();
     }
-})
+});
