@@ -6,10 +6,10 @@ app.use(express.json());
 
 const pool = mariadb.createPool({
     host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    port: process.env.DB_PORT,
     connectionLimit: 5
 });
 
@@ -43,7 +43,7 @@ app.get("/ausbilder", async (request, response) => {
             JOIN ausbilder au
                 ON us.user_id = au.user_id
         `);
-        
+
         response.send(rows);
 
     } catch (error) {
