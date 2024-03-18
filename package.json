@@ -1,0 +1,22 @@
+{
+  "name": "nachweiswizard",
+  "version": "1.0.0",
+  "description": "Ausbildungsnachweisverwaltung",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Valaron-Jakob/NachweisWizard.git"
+  },
+  "author": "Pascal/Jakob",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Valaron-Jakob/NachweisWizard/issues"
+  },
+  "homepage": "https://github.com/Valaron-Jakob/NachweisWizard#readme",
+  "devDependencies": {
+    "express": "^4.18.3"
+  }
+}
