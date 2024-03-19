@@ -12,7 +12,8 @@ const pool = mariadb.createPool({
     user: process.env.DB_USER,
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
-    connectionLimit: 5
+    connectionLimit: 5,
+    multipleStatements: true
 });
 
 // Nutzt einen Port aus den Umgebungsvariablen oder 3300 als Fallback
@@ -82,6 +83,63 @@ app.get("/ausbilder", async (request, response) => {
 
     } catch (error) {
         console.error("Query failed", error);
+
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+
+/**
+ * Legt einen neuen Ausbilder an, wenn dieser noch nicht existiert
+ */
+app.post("/ausbilder", async (request, response) => {
+    let conn;
+    let errors = [];
+    let results;
+
+    const data = request.body;
+
+    try {
+        conn = await pool.getConnection();
+
+        const userIds = await conn.query(`
+            SELECT user_id
+            FROM an_user
+            WHERE email = ?
+        `, data.email.toString());
+
+        if (userIds.length > 0) {
+            response.status(409).send({
+                "errors": [
+                    "A user with this email already exists"
+                ],
+                "user_id": userIds[0].user_id
+            });
+        }
+
+        results = await conn.query(`
+            INSERT INTO an_user (pw_hash, vorname, nachname, email, abteilung) VALUES (?, ?, ?, ?, ?);
+            SET @tmp_user_id = LAST_INSERT_ID();
+            
+            INSERT INTO ausbilder (user_id) VALUES (@tmp_user_id);
+            SET @tmp_ausbilder_id = LAST_INSERT_ID();
+            
+            SELECT @tmp_ausbilder_id AS ausbilder_id;
+        `, [
+            data.pw_hash.toString(),
+            data.vorname.toString(),
+            data.nachname.toString(),
+            data.email.toString(),
+            data.abteilung.toString()
+        ]);       
+
+        response.send({
+            "ausbilder_id": Number(results[4][0].ausbilder_id)
+        });
+
+    } catch (error) {
+        console.log(error);
 
     } finally {
         if (conn) conn.end();
