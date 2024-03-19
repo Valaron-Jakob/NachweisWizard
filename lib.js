@@ -1,4 +1,6 @@
-// Funktion zum Überprüfen, ob der Ausbilder existiert
+/**
+ * Funktion zum Überprüfen, ob der Ausbilder existiert 
+ */ 
 async function existsAusbilder(conn, ausbilderId) {
     const results = await conn.query(
         "SELECT ausbilder_id FROM ausbilder WHERE ausbilder_id = ?",
@@ -7,7 +9,9 @@ async function existsAusbilder(conn, ausbilderId) {
     return results.length > 0;
 }
 
-// Funktion zum Überprüfen, ob ein Benutzer existiert (anhand einer gegebenen Mail)
+/** 
+ * Funktion zum Überprüfen, ob ein Benutzer existiert (anhand einer gegebenen Mail)
+ */
 async function existsUserByMail(conn, email) {
     const results = await conn.query(
         "SELECT user_id FROM an_user WHERE email = ?",
@@ -16,7 +20,9 @@ async function existsUserByMail(conn, email) {
     return results.length > 0;
 }
 
-// Funtion zum Zurückgeben aller Ausbilder
+/**
+ * Funtion zum Zurückgeben aller Ausbilder
+ */
 async function getAllAusbilder(conn) {
     return await conn.query(`
         SELECT us.email, au.ausbilder_id
@@ -26,7 +32,9 @@ async function getAllAusbilder(conn) {
     `);
 }
 
-// Funktion zum Zurückgeben eines Ausbilders
+/**
+ * Funktion zum Zurückgeben eines Ausbilders
+ */
 async function getAusbilder(conn, ausbilderId) {
     return await conn.query(`
         SELECT us.user_id, us.vorname, us.nachname, us.email, us.abteilung
@@ -37,7 +45,9 @@ async function getAusbilder(conn, ausbilderId) {
     `, [ausbilderId]);
 }
 
-// Funktion zum Zurückgeben eines Ausbilders
+/**
+ * Funktion zum Zurückgeben eines Ausbilders
+ */
 async function getUserByMail(conn, email) {
     return await conn.query(`
         SELECT user_id, vorname, nachname, email, abteilung
@@ -46,7 +56,9 @@ async function getUserByMail(conn, email) {
     `, [email]);
 }
 
-// Funktion zum Einfügen eines neuen Ausbilders und Benutzers
+/**
+ * Funktion zum Einfügen eines neuen Ausbilders und Benutzers
+ */
 async function createAusbilder(conn, data) {
     const insertResults = await conn.query(`
         INSERT INTO an_user (pw_hash, vorname, nachname, email, abteilung) VALUES (?, ?, ?, ?, ?);
@@ -67,7 +79,9 @@ async function createAusbilder(conn, data) {
     return insertResults[4];
 }
 
-// Funktion zum Bearbeiten eines bestehenden Ausbilders und Benutzers
+/**
+ * Funktion zum Bearbeiten eines bestehenden Ausbilders und Benutzers
+ */
 async function editAusbilder(conn, ausbilderId, data) {
     let queryString = [];
     let queryValues = [];
@@ -91,7 +105,9 @@ async function editAusbilder(conn, ausbilderId, data) {
     console.log(results);
 }
 
-// Funktion zum Löschen des Ausbilders
+/**
+ * Funktion zum Löschen des Ausbilders
+ */
 async function deleteAusbilder(conn, ausbilderId) {
     const results = await conn.query(
         "SELECT user_id FROM ausbilder WHERE ausbilder_id = ?",
@@ -103,7 +119,9 @@ async function deleteAusbilder(conn, ausbilderId) {
     return results[0].user_id;
 }
 
-// Funktion zum Löschen des Users
+/**
+ * Funktion zum Löschen des Users
+ */
 async function deleteUser(conn, userId) {
     await conn.query("DELETE FROM an_user WHERE user_id = ?", [userId]);
 }

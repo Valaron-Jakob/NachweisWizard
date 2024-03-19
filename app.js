@@ -3,7 +3,6 @@ import mariadb from 'mariadb';
 import dotenv from 'dotenv';
 import db from './lib';
 
-
 dotenv.config();
 
 const app = express();
