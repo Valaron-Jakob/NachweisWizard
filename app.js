@@ -74,7 +74,7 @@ app.get("/ausbilder", async (request, response) => {
             `);
         }
 
-        if (errors) {
+        if (errors.length > 0) {
             response.status(404).send({ "errors": errors });
 
         } else {
@@ -137,6 +137,55 @@ app.post("/ausbilder", async (request, response) => {
 
         response.send({
             "ausbilder_id": Number(results[4][0].ausbilder_id)
+        });
+
+    } catch (error) {
+        console.log(error);
+        response.status(500).send(error);
+
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+
+/**
+ * Löscht einen Ausbilder, wenn dieser existiert
+ */
+app.delete("/ausbilder", async (request, response) => {
+    let conn;
+    let errors = [];
+    let results;
+
+    try {
+        conn = await pool.getConnection();
+        let query;
+
+        if (request.query.id) {
+            query = request.query.id.toString();
+            
+        } else {
+            response.status(400).send({
+                "errors": [
+                    "An id parameter must be given"
+                ]
+            });
+        }
+
+        results = await conn.query(`
+            DELETE FROM ausbilder
+            WHERE ausbilder_id = ?;
+            
+            DELETE FROM an_user
+            WHERE user_id = (
+                SELECT user_id 
+                FROM ausbilder 
+                WHERE ausbilder_id = ?
+            );
+        `, [query, query]);
+
+        response.send({
+            "ausbilder_id": query
         });
 
     } catch (error) {
