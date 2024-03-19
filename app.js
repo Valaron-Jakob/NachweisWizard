@@ -82,7 +82,8 @@ app.get("/ausbilder", async (request, response) => {
         }
 
     } catch (error) {
-        console.error("Query failed", error);
+        console.log(error);
+        response.status(500).send(error);
 
     } finally {
         if (conn) conn.end();
@@ -140,6 +141,7 @@ app.post("/ausbilder", async (request, response) => {
 
     } catch (error) {
         console.log(error);
+        response.status(500).send(error);
 
     } finally {
         if (conn) conn.end();
