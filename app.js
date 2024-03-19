@@ -101,7 +101,7 @@ app.post("/ausbilder", async (request, response) => {
 
     const data = request.body;
 
-    try {
+    label: try {
         conn = await pool.getConnection();
 
         const userIds = await conn.query(`
@@ -117,6 +117,7 @@ app.post("/ausbilder", async (request, response) => {
                 ],
                 "user_id": userIds[0].user_id
             });
+            break label;
         }
 
         results = await conn.query(`
@@ -157,7 +158,7 @@ app.delete("/ausbilder", async (request, response) => {
     let errors = [];
     let results;
 
-    try {
+    label: try {
         conn = await pool.getConnection();
         let query;
 
@@ -170,18 +171,32 @@ app.delete("/ausbilder", async (request, response) => {
                     "An id parameter must be given"
                 ]
             });
+            break label;
         }
 
         results = await conn.query(`
-            DELETE FROM ausbilder
-            WHERE ausbilder_id = ?;
-            
-            DELETE FROM an_user
-            WHERE user_id = (
-                SELECT user_id 
-                FROM ausbilder 
+            SELECT ausbilder_id
+            FROM ausbilder
+            WHERE ausbilder_id = ?
+        `, query);
+
+        if (results.length === 0) {
+            response.status(404).send();
+            break label;
+        }
+
+        results = await conn.query(`
+            SET @tmp_user_id = (
+                SELECT user_id
+                FROM ausbilder
                 WHERE ausbilder_id = ?
             );
+
+            DELETE FROM ausbilder
+            WHERE ausbilder_id = ?;
+
+            DELETE FROM an_user
+            WHERE user_id = @tmp_user_id;
         `, [query, query]);
 
         response.send({
