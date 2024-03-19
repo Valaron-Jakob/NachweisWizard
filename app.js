@@ -155,59 +155,67 @@ app.post("/ausbilder", async (request, response) => {
  */
 app.delete("/ausbilder", async (request, response) => {
     let conn;
-    let errors = [];
-    let results;
 
-    label: try {
+    try {
         conn = await pool.getConnection();
-        let query;
 
-        if (request.query.id) {
-            query = request.query.id.toString();
-            
-        } else {
-            response.status(400).send({
-                "errors": [
-                    "An id parameter must be given"
-                ]
+        const ausbilderId = request.query.id;
+        if (!ausbilderId) {
+            return response.status(400).send({
+                errors: ["An id parameter must be given"]
             });
-            break label;
         }
 
-        results = await conn.query(`
-            SELECT ausbilder_id
-            FROM ausbilder
-            WHERE ausbilder_id = ?
-        `, query);
-
-        if (results.length === 0) {
-            response.status(404).send();
-            break label;
+        const ausbilderExists = await existsAusbilder(conn, ausbilderId);
+        if (!ausbilderExists) {
+            return response.status(404).send();
         }
 
-        results = await conn.query(`
-            SET @tmp_user_id = (
-                SELECT user_id
-                FROM ausbilder
-                WHERE ausbilder_id = ?
-            );
+        await conn.beginTransaction();
 
-            DELETE FROM ausbilder
-            WHERE ausbilder_id = ?;
+        const userId = await deleteAusbilder(conn, ausbilderId);
+        await deleteUser(conn, userId);
 
-            DELETE FROM an_user
-            WHERE user_id = @tmp_user_id;
-        `, [query, query]);
+        await conn.commit();
 
         response.send({
             "ausbilder_id": query
         });
 
     } catch (error) {
-        console.log(error);
+        console.error(error);
+
+        if (conn) await conn.rollback();
         response.status(500).send(error);
 
     } finally {
         if (conn) conn.end();
     }
 });
+
+
+// Funktion zum Überprüfen, ob der Ausbilder existiert
+async function existsAusbilder(conn, ausbilderId) {
+    const results = await conn.query(
+        "SELECT ausbilder_id FROM ausbilder WHERE ausbilder_id = ?",
+        [ausbilderId]
+    );
+    return results.length > 0;
+}
+
+// Funktion zum Löschen des Ausbilders
+async function deleteAusbilder(conn, ausbilderId) {
+    const userIdResults = await conn.query(
+        "SELECT user_id FROM ausbilder WHERE ausbilder_id = ?",
+        [ausbilderId]
+    );
+
+    await conn.query("DELETE FROM ausbilder WHERE ausbilder_id = ?", [ausbilderId]);
+
+    return userIdResults[0].user_id;
+}
+
+// Funktion zum Löschen des Users
+async function deleteUser(conn, userId) {
+    await conn.query("DELETE FROM an_user WHERE user_id = ?", [userId]);
+}
