@@ -1,7 +1,10 @@
-const express = require('express');
-const mariadb = require('mariadb');
+import express from 'express';
+import mariadb from 'mariadb';
+import dotenv from 'dotenv';
+import db from './lib';
 
-require('dotenv').config();
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
@@ -32,10 +35,7 @@ app.get("/status", (request, response) => {
     response.send(status);
 });
 
-
-/**
- * Gibt alle Ausbilder zurück wenn als Filter keine ID mitgegeben wurde
- */
+// Gibt alle Ausbilder zurück wenn als Filter keine ID mitgegeben wurde
 app.get("/ausbilder", async (request, response) => {
     let conn;
 
@@ -45,7 +45,7 @@ app.get("/ausbilder", async (request, response) => {
         // Gibt einen Ausbilder zurück wenn eine ID angegeben wurde
         if (request.query.id) {
             const ausbilderId = request.query.id;
-            const results = await getAusbilder(conn, ausbilderId);
+            const results = await db.getAusbilder(conn, ausbilderId);
 
             if (results.length === 0) {
                 return response.status(404).send({
@@ -56,7 +56,7 @@ app.get("/ausbilder", async (request, response) => {
 
         // Gibt alle Ausbilder zurück
         } else {
-            const results = await getAllAusbilder(conn);
+            const results = await db.getAllAusbilder(conn);
             return response.send(results);
         }
 
@@ -69,10 +69,7 @@ app.get("/ausbilder", async (request, response) => {
     }
 });
 
-
-/**
- * Legt einen neuen Ausbilder an, wenn dieser noch nicht existiert
- */
+// Legt einen neuen Ausbilder an, wenn dieser noch nicht existiert
 app.post("/ausbilder", async (request, response) => {
     let conn;
 
@@ -83,7 +80,7 @@ app.post("/ausbilder", async (request, response) => {
 
         if (request.query.id) {
             const ausbilderId = request.query.id;
-            const results = await editAusbilder(conn, ausbilderId, data);
+            const results = await db.editAusbilder(conn, ausbilderId, data);
 
             return response.send({
                 message: ["Edited ausbilder fields"],
@@ -93,10 +90,10 @@ app.post("/ausbilder", async (request, response) => {
         }
 
         // Überprüfen, ob ein Benutzer mit derselben E-Mail-Adresse bereits existiert
-        const userExists = await existsUserByMail(conn, data.email);
+        const userExists = await db.existsUserByMail(conn, data.email);
 
         if (userExists) {
-            const user = await getUserByMail(conn, data.email);
+            const user = await db.getUserByMail(conn, data.email);
 
             return response.status(409).send({
                 errors: ["A user with this email already exists"],
@@ -105,7 +102,7 @@ app.post("/ausbilder", async (request, response) => {
         }
 
         conn.beginTransaction();
-        results = await createAusbilder(conn, data); 
+        results = await db.createAusbilder(conn, data); 
         conn.commit(); 
 
         return response.send({
@@ -123,10 +120,7 @@ app.post("/ausbilder", async (request, response) => {
     }
 });
 
-
-/**
- * Löscht einen Ausbilder, wenn dieser existiert
- */
+// Löscht einen Ausbilder, wenn dieser existiert
 app.delete("/ausbilder", async (request, response) => {
     let conn;
 
@@ -140,15 +134,15 @@ app.delete("/ausbilder", async (request, response) => {
             });
         }
 
-        const ausbilderExists = await existsAusbilder(conn, ausbilderId);
+        const ausbilderExists = await db.existsAusbilder(conn, ausbilderId);
         if (!ausbilderExists) {
             return response.status(404).send();
         }
 
         await conn.beginTransaction();
 
-        const userId = await deleteAusbilder(conn, ausbilderId);
-        await deleteUser(conn, userId);
+        const userId = await db.deleteAusbilder(conn, ausbilderId);
+        await db.deleteUser(conn, userId);
 
         await conn.commit();
 
@@ -167,114 +161,3 @@ app.delete("/ausbilder", async (request, response) => {
         if (conn) conn.end();
     }
 });
-
-
-// Funktion zum Überprüfen, ob der Ausbilder existiert
-async function existsAusbilder(conn, ausbilderId) {
-    const results = await conn.query(
-        "SELECT ausbilder_id FROM ausbilder WHERE ausbilder_id = ?",
-        [ausbilderId]
-    );
-    return results.length > 0;
-}
-
-// Funktion zum Überprüfen, ob ein Benutzer existiert (anhand einer gegebenen Mail)
-async function existsUserByMail(conn, email) {
-    const results = await conn.query(
-        "SELECT user_id FROM an_user WHERE email = ?",
-        [email]
-    );
-    return results.length > 0;
-}
-
-// Funtion zum Zurückgeben aller Ausbilder
-async function getAllAusbilder(conn) {
-    return await conn.query(`
-        SELECT us.email, au.ausbilder_id
-        FROM an_user us
-        JOIN ausbilder au
-            ON us.user_id = au.user_id
-    `);
-}
-
-// Funktion zum Zurückgeben eines Ausbilders
-async function getAusbilder(conn, ausbilderId) {
-    return await conn.query(`
-        SELECT us.user_id, us.vorname, us.nachname, us.email, us.abteilung
-        FROM an_user us
-        JOIN ausbilder au
-            ON us.user_id = au.user_id
-        WHERE au.ausbilder_id = ?
-    `, [ausbilderId]);
-}
-
-// Funktion zum Zurückgeben eines Ausbilders
-async function getUserByMail(conn, email) {
-    return await conn.query(`
-        SELECT user_id, vorname, nachname, email, abteilung
-        FROM an_user
-        WHERE email = ?
-    `, [email]);
-}
-
-// Funktion zum Einfügen eines neuen Ausbilders und Benutzers
-async function createAusbilder(conn, data) {
-    const insertResults = await conn.query(`
-        INSERT INTO an_user (pw_hash, vorname, nachname, email, abteilung) VALUES (?, ?, ?, ?, ?);
-        SET @tmp_user_id = LAST_INSERT_ID();
-        
-        INSERT INTO ausbilder (user_id) VALUES (@tmp_user_id);
-        SET @tmp_ausbilder_id = LAST_INSERT_ID();
-        
-        SELECT @tmp_ausbilder_id AS ausbilder_id;
-    `, [
-        data.pw_hash.toString(),
-        data.vorname.toString(),
-        data.nachname.toString(),
-        data.email.toString(),
-        data.abteilung.toString()
-    ]);
-    console.log(insertResults)
-    return insertResults[4];
-}
-
-// Funktion zum Bearbeiten eines bestehenden Ausbilders und Benutzers
-async function editAusbilder(conn, ausbilderId, data) {
-    let queryString = [];
-    let queryValues = [];
-
-    for (key in data) {
-        queryValues.push(data[key]);
-        queryString.push(key + " = ?");
-    }
-
-    queryValues.push(ausbilderId);
-
-    const results = await conn.query(`
-        UPDATE an_user us
-        JOIN ausbilder au
-            ON us.user_id = au.user_id
-        SET 
-            ${queryString.join(", ")}
-        WHERE au.ausbilder_id = ?;
-    `, queryValues);
-
-    console.log(results);
-}
-
-// Funktion zum Löschen des Ausbilders
-async function deleteAusbilder(conn, ausbilderId) {
-    const results = await conn.query(
-        "SELECT user_id FROM ausbilder WHERE ausbilder_id = ?",
-        [ausbilderId]
-    );
-
-    await conn.query("DELETE FROM ausbilder WHERE ausbilder_id = ?", [ausbilderId]);
-
-    return results[0].user_id;
-}
-
-// Funktion zum Löschen des Users
-async function deleteUser(conn, userId) {
-    await conn.query("DELETE FROM an_user WHERE user_id = ?", [userId]);
-}
