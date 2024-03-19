@@ -38,47 +38,26 @@ app.get("/status", (request, response) => {
  */
 app.get("/ausbilder", async (request, response) => {
     let conn;
-    let errors = [];
-    let results;
 
     try {
         conn = await pool.getConnection();
 
         // Gibt einen Ausbilder zurück wenn eine ID angegeben wurde
         if (request.query.id) {
-            const query = request.query.id.toString();
+            const ausbilderId = request.query.id;
+            const results = await getAusbilder(conn, ausbilderId);
 
-            results = await conn.query(`
-                SELECT us.user_id, us.vorname, us.nachname, us.email, us.abteilung
-                FROM an_user us
-                JOIN ausbilder au
-                    ON us.user_id = au.user_id
-                WHERE au.ausbilder_id = ?
-            `, query);
-
-            if (query.match(/[0-9]*/)) {
-                errors.push("The given id is not numeric");
+            if (results.length === 0) {
+                return response.status(404).send({
+                    errors: ["There is no Ausbilder with this id"]
+                });
             }
-
-            if (results.length == 0) {
-                errors.push("There is no ausbilder with this id");
-            }
+            return response.send(results);
 
         // Gibt alle Ausbilder zurück
         } else {
-            results = await conn.query(`
-                SELECT us.email, au.ausbilder_id
-                FROM an_user us
-                JOIN ausbilder au
-                    ON us.user_id = au.user_id
-            `);
-        }
-
-        if (errors.length > 0) {
-            response.status(404).send({ "errors": errors });
-
-        } else {
-            response.send(results);
+            const results = await getAllAusbilder(conn);
+            return response.send(results);
         }
 
     } catch (error) {
@@ -96,52 +75,47 @@ app.get("/ausbilder", async (request, response) => {
  */
 app.post("/ausbilder", async (request, response) => {
     let conn;
-    let errors = [];
-    let results;
 
     const data = request.body;
 
-    label: try {
+    try {
         conn = await pool.getConnection();
 
-        const userIds = await conn.query(`
-            SELECT user_id
-            FROM an_user
-            WHERE email = ?
-        `, data.email.toString());
+        if (request.query.id) {
+            const ausbilderId = request.query.id;
+            const results = await editAusbilder(conn, ausbilderId, data);
 
-        if (userIds.length > 0) {
-            response.status(409).send({
-                "errors": [
-                    "A user with this email already exists"
-                ],
-                "user_id": userIds[0].user_id
+            return response.send({
+                message: ["Edited ausbilder fields"],
+                ausbilder_id: ausbilderId,
+                data: data
             });
-            break label;
         }
 
-        results = await conn.query(`
-            INSERT INTO an_user (pw_hash, vorname, nachname, email, abteilung) VALUES (?, ?, ?, ?, ?);
-            SET @tmp_user_id = LAST_INSERT_ID();
-            
-            INSERT INTO ausbilder (user_id) VALUES (@tmp_user_id);
-            SET @tmp_ausbilder_id = LAST_INSERT_ID();
-            
-            SELECT @tmp_ausbilder_id AS ausbilder_id;
-        `, [
-            data.pw_hash.toString(),
-            data.vorname.toString(),
-            data.nachname.toString(),
-            data.email.toString(),
-            data.abteilung.toString()
-        ]);       
+        // Überprüfen, ob ein Benutzer mit derselben E-Mail-Adresse bereits existiert
+        const userExists = await existsUserByMail(conn, data.email);
 
-        response.send({
-            "ausbilder_id": Number(results[4][0].ausbilder_id)
+        if (userExists) {
+            const user = await getUserByMail(conn, data.email);
+
+            return response.status(409).send({
+                errors: ["A user with this email already exists"],
+                user_id: user[0].user_id
+            });
+        }
+
+        conn.beginTransaction();
+        results = await createAusbilder(conn, data); 
+        conn.commit(); 
+
+        return response.send({
+            "ausbilder_id": Number(results[0].ausbilder_id)
         });
 
     } catch (error) {
         console.log(error);
+
+        if (conn) await conn.rollback();
         response.status(500).send(error);
 
     } finally {
@@ -179,7 +153,8 @@ app.delete("/ausbilder", async (request, response) => {
         await conn.commit();
 
         response.send({
-            "ausbilder_id": query
+            "ausbilder_id": ausbilderId,
+            "user_id": userId
         });
 
     } catch (error) {
@@ -203,16 +178,100 @@ async function existsAusbilder(conn, ausbilderId) {
     return results.length > 0;
 }
 
+// Funktion zum Überprüfen, ob ein Benutzer existiert (anhand einer gegebenen Mail)
+async function existsUserByMail(conn, email) {
+    const results = await conn.query(
+        "SELECT user_id FROM an_user WHERE email = ?",
+        [email]
+    );
+    return results.length > 0;
+}
+
+// Funtion zum Zurückgeben aller Ausbilder
+async function getAllAusbilder(conn) {
+    return await conn.query(`
+        SELECT us.email, au.ausbilder_id
+        FROM an_user us
+        JOIN ausbilder au
+            ON us.user_id = au.user_id
+    `);
+}
+
+// Funktion zum Zurückgeben eines Ausbilders
+async function getAusbilder(conn, ausbilderId) {
+    return await conn.query(`
+        SELECT us.user_id, us.vorname, us.nachname, us.email, us.abteilung
+        FROM an_user us
+        JOIN ausbilder au
+            ON us.user_id = au.user_id
+        WHERE au.ausbilder_id = ?
+    `, [ausbilderId]);
+}
+
+// Funktion zum Zurückgeben eines Ausbilders
+async function getUserByMail(conn, email) {
+    return await conn.query(`
+        SELECT user_id, vorname, nachname, email, abteilung
+        FROM an_user
+        WHERE email = ?
+    `, [email]);
+}
+
+// Funktion zum Einfügen eines neuen Ausbilders und Benutzers
+async function createAusbilder(conn, data) {
+    const insertResults = await conn.query(`
+        INSERT INTO an_user (pw_hash, vorname, nachname, email, abteilung) VALUES (?, ?, ?, ?, ?);
+        SET @tmp_user_id = LAST_INSERT_ID();
+        
+        INSERT INTO ausbilder (user_id) VALUES (@tmp_user_id);
+        SET @tmp_ausbilder_id = LAST_INSERT_ID();
+        
+        SELECT @tmp_ausbilder_id AS ausbilder_id;
+    `, [
+        data.pw_hash.toString(),
+        data.vorname.toString(),
+        data.nachname.toString(),
+        data.email.toString(),
+        data.abteilung.toString()
+    ]);
+    console.log(insertResults)
+    return insertResults[4];
+}
+
+// Funktion zum Bearbeiten eines bestehenden Ausbilders und Benutzers
+async function editAusbilder(conn, ausbilderId, data) {
+    let queryString = [];
+    let queryValues = [];
+
+    for (key in data) {
+        queryValues.push(data[key]);
+        queryString.push(key + " = ?");
+    }
+
+    queryValues.push(ausbilderId);
+
+    const results = await conn.query(`
+        UPDATE an_user us
+        JOIN ausbilder au
+            ON us.user_id = au.user_id
+        SET 
+            ${queryString.join(", ")}
+        WHERE au.ausbilder_id = ?;
+    `, queryValues);
+
+    console.log(results);
+}
+
 // Funktion zum Löschen des Ausbilders
 async function deleteAusbilder(conn, ausbilderId) {
-    const userIdResults = await conn.query(
+    const results = await conn.query(
         "SELECT user_id FROM ausbilder WHERE ausbilder_id = ?",
         [ausbilderId]
     );
 
     await conn.query("DELETE FROM ausbilder WHERE ausbilder_id = ?", [ausbilderId]);
 
-    return userIdResults[0].user_id;
+    return results[0].user_id;
 }
 
 // Funktion zum Löschen des Users
